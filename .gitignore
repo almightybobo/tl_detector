@@ -1,3 +1,5 @@
 .vscode
 .DS_Store
 udacity-traffic-light-dataset
+logs
+__pycache__
