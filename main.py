@@ -24,6 +24,7 @@ def train(tld, data, args):
     print('checkpoint %s saved' % ckpt_path)
 
     test(tld, data, args)
+    predict(tld, data, args)
   
   print('End')
 
@@ -39,7 +40,7 @@ def test(tld, data, args):
 def predict(tld, data, args):
   print('---- start predicting ----')
   correct = 0
-  for i in range(data.test_size):
+  for i in range(1, data.test_size+1):
     example = data.get_one_test_example()
     image = cv2.imread(example.image_path)
 
@@ -59,6 +60,7 @@ def predict(tld, data, args):
 
     output_path = os.path.join(args.log_dir, os.path.basename(example.image_path))
     cv2.imwrite(output_path, image)
+    print("[%d/%d] %s" % (i, data.test_size, output_path), end='\r')
 
   accuracy = correct / data.test_size
   print('accuracy: [%d/%d] = %.6f' % (correct, data.test_size, accuracy))
@@ -70,8 +72,6 @@ def main(args):
       is_train=args.train or args.test,
       pos_thresh=args.pos_thresh)
   
-  tld.create_session()
-  
   data = DataLoader(
       args.data,
       args.batch_size,
@@ -80,6 +80,8 @@ def main(args):
       tld.output_shape[1],
       tld.output_shape[2],
       args.split_test)
+
+  tld.create_session()
 
   if args.train:
     train(tld, data, args)

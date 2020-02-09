@@ -157,16 +157,20 @@ class TrafficLightDetector:
       conf = output[0,:,:,0] # (H, W)
       conf = tf.nn.sigmoid(conf) # (H, W)
       pos = tf.greater_equal(conf, self.pos_thresh) # (H, W)
-      pos_count = tf.reduce_sum(tf.cast(pos, tf.uint8))
+      pos_count = tf.reduce_sum(tf.cast(pos, tf.int8))
       
       logit = output[0,:,:,1:4] # (H, W, 3)
       logit = tf.boolean_mask(logit, pos) # (N, 3)
       light_states = tf.argmax(logit, -1) # (N)
       light_states, _, count = tf.unique_with_counts(light_states)
-      max_index = tf.cast(tf.argmax(count, -1), tf.int32)
-      light_state = tf.gather(light_states, max_index)
-
-      light_state = tf.where(tf.equal(pos_count, 0), tf.constant(-1, tf.int32), tf.cast(light_state, tf.int32))
+      max_index = tf.cond(
+          tf.equal(pos_count, 0),
+          lambda: tf.constant(0, dtype=tf.int32),
+          lambda: tf.cast(tf.argmax(count, -1), tf.int32))
+      light_state = tf.cond(
+          tf.equal(pos_count, 0),
+          lambda: tf.constant(-1, dtype=tf.int32),
+          lambda: tf.cast(tf.gather(light_states, max_index), tf.int32))
       light_position = tf.where(pos) * self._total_stride + self._total_stride // 2
 
     self.node['light_state'] = light_state
@@ -183,9 +187,11 @@ class TrafficLightDetector:
     self.node['ph_mask'] = ph_mask
 
     gt_conf = ph_label[:,:,:,0]
-    pr_conf = tf.nn.sigmoid(output[:,:,:,0])
+    pr_conf = output[:,:,:,0]
     mask_conf = ph_mask[:,:,:,0]
     # loss_conf = tf.squared_difference(gt_conf, pr_conf)
+    pr_conf = tf.nn.sigmoid(pr_conf)
+    pr_conf = tf.clip_by_value(pr_conf, 1e-3, 1-1e-3)
     loss_conf = - gt_conf * tf.log(pr_conf) - (1. - gt_conf) * tf.log(1. - pr_conf)
     loss_conf = loss_conf * mask_conf
     loss_conf = tf.reduce_sum(loss_conf) / batch_size
@@ -193,6 +199,7 @@ class TrafficLightDetector:
 
     gt_logit = ph_label[:,:,:,1:4]
     pr_logit = tf.nn.softmax(output[:,:,:,1:4])
+    pr_logit = tf.clip_by_value(pr_logit, 1e-3, 1-1e-3)
     mask_logit = ph_mask[:,:,:,1:4]
     loss_logit = - tf.reduce_sum(gt_logit * tf.log(pr_logit) * mask_logit, -1)
     loss_logit = tf.reduce_sum(loss_logit) / batch_size

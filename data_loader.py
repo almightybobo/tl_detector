@@ -124,6 +124,11 @@ class DataLoader:
       y = int(round(light.box_center.y / self.stride))
       y = np.clip(y, 0, label.shape[1] - 1)
 
+      label_mask[0, y, x, :] = 1.
+      label[0, y, x, 0] = 1.
+      label[0, y, x, light.light_state + 1] = 1
+
+      '''
       if x == 0:
         kx_s = 1
         kx_e = 2
@@ -162,6 +167,7 @@ class DataLoader:
       for y in range(ly_s, ly_e+1):
         for x in range(lx_s, lx_e+1):
           label[0, y, x, light.light_state + 1] = 1
+      '''
       
     '''
     for c in range(4):
