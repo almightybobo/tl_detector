@@ -48,7 +48,7 @@ def predict(tld, data, args):
     if ret['light_state'] == 0:
       color = (0, 0, 255)
     elif ret['light_state'] == 1:
-      color = (255, 0, 0)
+      color = (0, 255, 255)
     else:
       color = (0, 255, 0)
 
