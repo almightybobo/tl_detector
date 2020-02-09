@@ -28,7 +28,8 @@ def resize_images_and_boxes_in_dataset(img_path, output_dir, root, width=384, he
   width_ratio = width / img_width
   height_ratio = height / img_height
   test_dir = os.path.join(output_dir, 'test')
-  os.makedirs(test_dir, exist_ok=True)
+  if not os.path.exists(test_dir):
+    os.makedirs(test_dir)
   for p in root.findall('.//object'):
       color = color_label[p.find('name').text]
       xmin = int(p.find('bndbox/xmin').text) / img_width * width
@@ -44,7 +45,8 @@ def resize_images_and_boxes_in_dataset(img_path, output_dir, root, width=384, he
 
 if __name__ == '__main__':
   def run(image_dir, resize_dir):
-    os.makedirs(resize_dir, exist_ok=True)
+    if not os.path.exists(resize_dir):
+      os.makedirs(resize_dir)
 
     with open('./udacity-traffic-light-dataset/train.txt', 'w+') as f:
         for color in ['Green', 'Red', 'Yellow']:
