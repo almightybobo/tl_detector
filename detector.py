@@ -119,7 +119,7 @@ class TrafficLightDetector:
 
     # normalize ?!
     net = ph_image
-    net = net * (1. / 255.)
+    net = (net - 127.5) * (1. / 127.5)
 
     with slim.arg_scope(
         [slim.conv2d],
