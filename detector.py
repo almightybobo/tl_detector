@@ -132,7 +132,7 @@ class TrafficLightDetector:
           in_channel = net.shape[-1]
           short_cut = net
           net = slim.conv2d(net, in_channel * 4, kernel_size=(1, 1))
-          net = slim.separable_conv2d(net, in_channel, kernel_size=(3, 3))
+          net = slim.separable_conv2d(net, in_channel, kernel_size=(3, 3), depth_multiplier=1)
           net = net + short_cut
           return net
 
