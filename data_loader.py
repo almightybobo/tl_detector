@@ -38,9 +38,9 @@ class DataLoader:
     self.stride = input_h // output_h
 
     self.label_kernel = np.array([
-        [0.5, 0.7, 0.5],
-        [0.5, 1.0, 0.5],
-        [0.5, 0.7, 0.5]], dtype=np.float32)
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0]], dtype=np.float32)
 
     self.images = np.zeros(shape=[batch_size, input_h, input_w, 3], dtype=np.float32)
     self.labels = np.zeros(shape=[batch_size, output_h, output_w, 4], dtype=np.float32)

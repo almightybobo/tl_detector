@@ -197,7 +197,7 @@ class TrafficLightDetector:
     loss_logit = tf.reduce_sum(loss_logit) / batch_size
     self.node['loss_logit'] = loss_logit
 
-    loss = 2. * loss_conf + loss_logit
+    loss = 5. * loss_conf + loss_logit
     self.node['loss'] = loss
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
