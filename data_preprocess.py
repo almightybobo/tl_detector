@@ -27,6 +27,8 @@ def resize_images_and_boxes_in_dataset(img_path, output_dir, root, width=384, he
 
   width_ratio = width / img_width
   height_ratio = height / img_height
+  test_dir = os.path.join(output_dir, 'test')
+  os.makedirs(test_dir, exist_ok=True)
   for p in root.findall('.//object'):
       color = color_label[p.find('name').text]
       xmin = int(p.find('bndbox/xmin').text) / img_width * width
@@ -35,21 +37,26 @@ def resize_images_and_boxes_in_dataset(img_path, output_dir, root, width=384, he
       ymax = int(p.find('bndbox/ymax').text) / img_height * height
       output.extend([color, str(xmin), str(ymin), str(xmax), str(ymax)])
       cv2.rectangle(img, (int(xmin), int(ymin)), (int(xmax), int(ymax)), color=(255, 0, 0))
-      cv2.imwrite(os.path.join(output_dir, 'test', os.path.basename(img_path)), img)
+      cv2.imwrite(os.path.join(test_dir, os.path.basename(img_path)), img)
 
   return output
 
 
 if __name__ == '__main__':
-  dir = './udacity-traffic-light-dataset/simulator_dataset_rgb/'
-  resize_dir = './udacity-traffic-light-dataset/simulator_resize/'
+  def run(image_dir, resize_dir):
+    os.makedirs(resize_dir, exist_ok=True)
 
-  with open('./udacity-traffic-light-dataset/train.txt', 'w+') as f:
-      for color in ['Green', 'Red', 'Yellow']:
-          dir_path = os.path.join(dir, color, 'labels')
-          for filepath in glob.glob(dir_path+'/*.xml'):
-              tree = ET.parse(filepath)
-              root = tree.getroot()
-              img_path = os.path.join(dir, color, root.findall('filename')[0].text)
-              output = resize_images_and_boxes_in_dataset(img_path, resize_dir, root)
-              f.write(','.join(output) + '\n')
+    with open('./udacity-traffic-light-dataset/train.txt', 'w+') as f:
+        for color in ['Green', 'Red', 'Yellow']:
+            dir_path = os.path.join(image_dir, color, 'labels')
+            for filepath in glob.glob(dir_path+'/*.xml'):
+                tree = ET.parse(filepath)
+                root = tree.getroot()
+                img_path = os.path.join(image_dir, color, root.findall('filename')[0].text)
+                output = resize_images_and_boxes_in_dataset(img_path, resize_dir, root)
+                f.write(','.join(output) + '\n')
+
+  import sys
+  image_dir = sys.argv[1] # './udacity-traffic-light-dataset/simulator_dataset_rgb/'
+  resize_dir = sys.argv[2] # './udacity-traffic-light-dataset/simulator_resize/'
+  run(image_dir, resize_dir)
