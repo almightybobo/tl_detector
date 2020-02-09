@@ -1,3 +1,6 @@
+from __future__ import print_function
+from __future__ import division
+from __future__ import absolute_import
 import numpy as np
 import cv2
 
@@ -71,17 +74,17 @@ class DataLoader:
   def get_train_batch(self):
     for i in range(self.batch_size):
       image, label, label_mask = self.get_one_train()
-      self.images[i:i+1] = image
-      self.labels[i:i+1] = label
-      self.labels_mask[i:i+1] = label_mask
+      self.images[i:(i+1)] = image
+      self.labels[i:(i+1)] = label
+      self.labels_mask[i:(i+1)] = label_mask
     return self.images, self.labels, self.labels_mask
 
   def get_test_batch(self):
     for i in range(self.batch_size):
       image, label, label_mask = self.get_one_train()
-      self.images[i:i+1] = image
-      self.labels[i:i+1] = label
-      self.labels_mask[i:i+1] = label_mask
+      self.images[i:(i+1)] = image
+      self.labels[i:(i+1)] = label
+      self.labels_mask[i:(i+1)] = label_mask
     return self.images, self.labels, self.labels_mask
 
   def get_one_train_example(self):
@@ -116,9 +119,9 @@ class DataLoader:
 
     for light in example.lights:
       
-      x = round(light.box_center.x / self.stride)
+      x = int(round(light.box_center.x / self.stride))
       x = np.clip(x, 0, label.shape[2] - 1)
-      y = round(light.box_center.y / self.stride)
+      y = int(round(light.box_center.y / self.stride))
       y = np.clip(y, 0, label.shape[1] - 1)
 
       if x == 0:
@@ -153,8 +156,8 @@ class DataLoader:
         ly_s = y - 1
         ly_e = y + 1
 
-      label[0, ly_s:ly_e+1, lx_s:lx_e+1, 0] = self.label_kernel[ky_s:ky_e+1, kx_s:kx_e+1]
-      label_mask[0, ly_s:ly_e+1, lx_s:lx_e+1, :] = 1.
+      label[0, ly_s:(ly_e+1), lx_s:(lx_e+1), 0] = self.label_kernel[ky_s:(ky_e+1), kx_s:(kx_e+1)]
+      label_mask[0, ly_s:(ly_e+1), lx_s:(lx_e+1), :] = 1.
 
       for y in range(ly_s, ly_e+1):
         for x in range(lx_s, lx_e+1):

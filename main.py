@@ -1,3 +1,7 @@
+from __future__ import print_function
+from __future__ import division
+from __future__ import absolute_import
+
 import os
 import argparse
 import tensorflow as tf
@@ -13,7 +17,7 @@ def train(tld, data, args):
     for step in range(1, epoch_steps+1):
       images, labels, labels_mask = data.get_train_batch()
       ret = tld.train(images, labels, labels_mask)
-      print(ret, end='\r')
+      print(ret, end='\r', flush=True)
     print()
     ckpt_path = os.path.join(args.log_dir, 'ckpt-%d-%d' % (e, step))
     tld.save(ckpt_path)
@@ -29,7 +33,7 @@ def test(tld, data, args):
   for i in range(test_epoch_steps):
     images, labels, labels_mask = data.get_test_batch()
     ret = tld.test(images, labels, labels_mask)
-    print(ret, end='\r')
+    print(ret, end='\r', flush=True)
   print()
 
 def predict(tld, data, args):
