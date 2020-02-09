@@ -126,7 +126,7 @@ class TrafficLightDetector:
         kernel_size=(3, 3), padding='SAME', normalizer_fn=slim.batch_norm, activation_fn=self.activation_fn):
 
       with slim.arg_scope(
-          [slim.batch_norm], is_training=self.is_train, scale=True):
+          [slim.batch_norm], is_training=self.is_train):
 
         def resblock(net):
           in_channel = net.shape[-1]
@@ -185,7 +185,8 @@ class TrafficLightDetector:
     gt_conf = ph_label[:,:,:,0]
     pr_conf = tf.nn.sigmoid(output[:,:,:,0])
     mask_conf = ph_mask[:,:,:,0]
-    loss_conf = tf.squared_difference(gt_conf, pr_conf)
+    # loss_conf = tf.squared_difference(gt_conf, pr_conf)
+    loss_conf = - gt_conf * tf.log(pr_conf) - (1. - gt_conf) * tf.log(1. - pr_conf)
     loss_conf = loss_conf * mask_conf
     loss_conf = tf.reduce_sum(loss_conf) / batch_size
     self.node['loss_conf'] = loss_conf
