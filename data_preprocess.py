@@ -48,7 +48,7 @@ if __name__ == '__main__':
     if not os.path.exists(resize_dir):
       os.makedirs(resize_dir)
 
-    with open('./udacity-traffic-light-dataset/train.txt', 'w+') as f:
+    with open('./udacity-traffic-light-dataset/train.txt', 'w') as f:
         for color in ['Green', 'Red', 'Yellow']:
             dir_path = os.path.join(image_dir, color, 'labels')
             for filepath in glob.glob(dir_path+'/*.xml'):
