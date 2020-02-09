@@ -6,7 +6,8 @@ from tensorflow.contrib import slim
 class TrafficLightDetector:
   def __init__(self, input_shape, checkpoint, is_train, name="CBNOnet", **kwargs):
     self._input_shape = input_shape
-    self._output_shape = [input_shape[0], input_shape[1] // 16, input_shape[2] // 16, 4]
+    self._total_stride = 16
+    self._output_shape = [input_shape[0], input_shape[1] // self._total_stride, input_shape[2] // self._total_stride, 4]
     self._checkpoint = checkpoint
     self._is_train = is_train
     self._name = name
@@ -16,12 +17,14 @@ class TrafficLightDetector:
     self._lr_decay_steps = kwargs.get('lr_decay_steps', 1000)
     self._lr_decay_rate = kwargs.get('lr_decay_rate', 0.96)
     self._lr_decay_staircase = kwargs.get('lr_decay_staircase', True)
+    self._pos_thresh = kwargs.get('pos_thresh', 0.5)
 
     self._session = None
+    self._saver = None
     self._build()
 
   def __del__(self):
-    self.sess.close()
+    self.close_session()
 
   @property
   def input_shape(self):
@@ -75,6 +78,10 @@ class TrafficLightDetector:
     return self._lr_decay_staircase
 
   @property
+  def pos_thresh(self):
+    return self._pos_thresh
+
+  @property
   def sess(self):
     return self._session
 
@@ -84,12 +91,19 @@ class TrafficLightDetector:
     if self.checkpoint is not None:
       saver = tf.train.Saver()
       saver.restore(self.sess, self.checkpoint)
+      print('restore session from checkpoint %s' % self.checkpoint)
     else:
       self.sess.run(tf.global_variables_initializer())
+      print('session initialized')
 
   def close_session(self):
     if self.sess is not None:
       self.sess.close()
+
+  def save(self, save_path):
+    if self._saver is None:
+      self._saver = tf.train.Saver(max_to_keep=100)
+    self._saver.save(self.sess, save_path)
 
   def _build(self):
     self.node = {}
@@ -105,6 +119,7 @@ class TrafficLightDetector:
 
     # normalize ?!
     net = ph_image
+    net = net * (1. / 255.)
 
     with slim.arg_scope(
         [slim.conv2d],
@@ -138,34 +153,55 @@ class TrafficLightDetector:
     output = net
     self.node['output'] = output
 
+    with tf.control_dependencies([tf.assert_equal(tf.shape(output)[0], 1)]):
+      conf = output[0,:,:,0] # (H, W)
+      conf = tf.nn.sigmoid(conf) # (H, W)
+      pos = tf.greater_equal(conf, self.pos_thresh) # (H, W)
+      pos_count = tf.reduce_sum(tf.cast(pos, tf.uint8))
+      
+      logit = output[0,:,:,1:4] # (H, W, 3)
+      logit = tf.boolean_mask(logit, pos) # (N, 3)
+      light_states = tf.argmax(logit, -1) # (N)
+      light_states, _, count = tf.unique_with_counts(light_states)
+      max_index = tf.cast(tf.argmax(count, -1), tf.int32)
+      light_state = tf.gather(light_states, max_index)
+
+      light_state = tf.where(tf.equal(pos_count, 0), tf.constant(-1, tf.int32), tf.cast(light_state, tf.int32))
+      light_position = tf.where(pos) * self._total_stride + self._total_stride // 2
+
+    self.node['light_state'] = light_state
+    self.node['light_position'] = light_position
+
   def _build_train(self):
     output = self.node['output']
 
     batch_size = tf.shape(output)[0]
     batch_size = tf.cast(batch_size, tf.float32)
     ph_label = tf.placeholder(tf.float32, shape=self.output_shape)
-    ph_mask = tf.placeholder(tf.bool, shape=self.output_shape[:3])
+    ph_mask = tf.placeholder(tf.float32, shape=self.output_shape)
     self.node['ph_label'] = ph_label
     self.node['ph_mask'] = ph_mask
 
-    gt_conf = tf.boolean_mask(ph_label[:,:,:,0], ph_mask)
-    pr_conf = tf.boolean_mask(output[:,:,:,0], ph_mask)
-    pr_conf = tf.nn.sigmoid(pr_conf)
+    gt_conf = ph_label[:,:,:,0]
+    pr_conf = tf.nn.sigmoid(output[:,:,:,0])
+    mask_conf = ph_mask[:,:,:,0]
     loss_conf = tf.squared_difference(gt_conf, pr_conf)
+    loss_conf = loss_conf * mask_conf
     loss_conf = tf.reduce_sum(loss_conf) / batch_size
     self.node['loss_conf'] = loss_conf
 
-    gt_logit = tf.boolean_mask(ph_label[:,:,:,1:4], ph_mask)
-    pr_logit = tf.boolean_mask(output[:,:,:,1:4], ph_mask)
-    loss_logit = tf.nn.softmax_cross_entropy_with_logits(labels=gt_logit, logits=pr_logit)
+    gt_logit = ph_label[:,:,:,1:4]
+    pr_logit = tf.nn.softmax(output[:,:,:,1:4])
+    mask_logit = ph_mask[:,:,:,1:4]
+    loss_logit = - tf.reduce_sum(gt_logit * tf.log(pr_logit) * mask_logit, -1)
     loss_logit = tf.reduce_sum(loss_logit) / batch_size
     self.node['loss_logit'] = loss_logit
 
-    loss = loss_conf + loss_logit
+    loss = 2. * loss_conf + loss_logit
     self.node['loss'] = loss
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    with tf.control_dependencies([update_ops]):
+    with tf.control_dependencies(update_ops):
       global_step = tf.Variable(0, trainable=False)
       lr_decay = tf.train.exponential_decay(
           learning_rate=self.start_learning_rate,
@@ -181,26 +217,44 @@ class TrafficLightDetector:
 
   def train(self, images, labels, labels_mask):
     ret = self.sess.run(
-        [
-            self.node['global_step'],
-            self.node['learning_rate'],
-            self.node['loss_conf'],
-            self.node['loss_logit'],
-            self.node['loss'],
-            self.node['train_step']],
+        {
+            'step': self.node['global_step'],
+            'lr': self.node['learning_rate'],
+            'loss_conf': self.node['loss_conf'],
+            'loss_logit': self.node['loss_logit'],
+            'loss': self.node['loss'],
+            'train_step': self.node['train_step']},
         {
             self.node['ph_image']: images,
             self.node['ph_label']: labels,
             self.node['ph_mask']: labels_mask})
-    return ret[:-1]
+    return ret
 
-  def test(self, images):
-    output = self.sess.run(self.node['output'], {self.node['ph_image']: images})
-    return output
+  def predict(self, images):
+    ret = self.sess.run(
+        {
+            'light_state': self.node['light_state'],
+            'light_position': self.node['light_position']},
+        {
+            self.node['ph_image']: images})
+    return ret
+
+  def test(self, images, labels, labels_mask):
+    ret = self.sess.run(
+        {
+            'loss_conf': self.node['loss_conf'],
+            'loss_logit': self.node['loss_logit'],
+            'loss': self.node['loss']},
+        {
+            self.node['ph_image']: images,
+            self.node['ph_label']: labels,
+            self.node['ph_mask']: labels_mask})
+    return ret
 
 if __name__ == '__main__':
   def test():
-    batch_size = 32
+    import cv2
+    batch_size = 1
     tld = TrafficLightDetector(
         input_shape=[batch_size, 288, 384, 3],
         checkpoint=None,
@@ -209,6 +263,90 @@ if __name__ == '__main__':
     assert tld.output_shape == [batch_size, 18, 24, 4]
     print(tld.parameters_info)
 
-    tld.train()
-    tld.test()
+    train_txt_path = './udacity-traffic-light-dataset/train.txt'
+    with open(train_txt_path, 'r') as f:
+      for _ in range(868):
+        sample = f.readline()
+      sample = f.readline()
+      sample = sample.split(',')
+    # one example
+    image_path = sample[0]
+    labels = []
+    boxes = []
+    centers = []
+    for i in range((len(sample) - 1) // 5):
+      label = int(sample[i*5+1])
+      x1 = float(sample[i*5+2])
+      y1 = float(sample[i*5+3])
+      x2 = float(sample[i*5+4])
+      y2 = float(sample[i*5+5])
+      center_x = (x1 + x2) / 2
+      center_y = (y1 + y2) / 2
+      labels.append(label)
+      boxes.append([x1, y1, x2, y2])
+      centers.append([center_x, center_y])
+
+    label_kernel = np.array([[0.5, 0.7, 0.5], [0.5, 1.0, 0.5], [0.5, 0.7, 0.5]], dtype=np.float32)
+    label = np.zeros(shape=[1, 18, 24, 4], dtype=np.float32)
+    label_mask = np.zeros(shape=[1, 18, 24, 4], dtype=np.float32)
+    label_mask[:, :, :, 0] = 0.1
+    for center in centers:
+      x = round(center[0] / 16) # 288 // 18 == 16
+      x = np.clip(x, 0, label.shape[2] - 1)
+      y = round(center[1] / 16) # 384 // 24 == 16
+      y = np.clip(y, 0, label.shape[1] - 1)
+
+      if x == 0:
+        kx_s = 1
+        kx_e = 2
+        lx_s = 0
+        lx_e = 1
+      elif x == label.shape[2] - 1:
+        kx_s = 0
+        kx_e = 1
+        lx_s = x - 1
+        lx_e = x
+      else:
+        kx_s = 0
+        kx_e = 2
+        lx_s = x - 1
+        lx_e = x + 1
+
+      if y == 0:
+        ky_s = 1
+        ky_e = 2
+        ly_s = 0
+        ly_e = 1
+      elif y == label.shape[1] - 1:
+        ky_s = 0
+        ky_e = 1
+        ly_s = y - 1
+        ly_e = y
+      else:
+        ky_s = 0
+        ky_e = 2
+        ly_s = y - 1
+        ly_e = y + 1
+
+      label[0, ly_s:ly_e+1, lx_s:lx_e+1, 0] = label_kernel[ky_s:ky_e+1, kx_s:kx_e+1]
+      label_mask[0, ly_s:ly_e+1, lx_s:lx_e+1, :] = 1.
+
+      for y in range(ly_s, ly_e+1):
+        for x in range(lx_s, lx_e+1):
+          label[0, y, x, labels[0]+1] = 1
+      
+    for c in range(4):
+      print('\n')
+      for y in range(18):
+        print(label[0, y, :, c])
+      print()
+      for y in range(18):
+        print(label_mask[0, y, :, c])
+      
+    image = np.expand_dims(cv2.imread(image_path), 0)
+    tld.create_session()
+    for _ in range(100):
+      print(tld.train(image, label, label_mask))
+      print(tld.predict(image))
+    print(tld.test(image))
   test()
