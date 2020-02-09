@@ -14,7 +14,7 @@ class TrafficLightDetector:
 
     self._activation_fn = kwargs.get('activation_fn', tf.nn.relu)
     self._start_learning_rate = kwargs.get('start_learning_rate', 1e-3)
-    self._lr_decay_steps = kwargs.get('lr_decay_steps', 1000)
+    self._lr_decay_steps = kwargs.get('lr_decay_steps', 100)
     self._lr_decay_rate = kwargs.get('lr_decay_rate', 0.96)
     self._lr_decay_staircase = kwargs.get('lr_decay_staircase', True)
     self._pos_thresh = kwargs.get('pos_thresh', 0.5)
@@ -140,13 +140,13 @@ class TrafficLightDetector:
         net = slim.conv2d(net, 32, stride=1)
 
         net = resblock(net)
-        net = slim.conv2d(net, 32, stride=2)
+        net = slim.conv2d(net, 64, stride=2)
 
         net = resblock(net)
-        net = slim.conv2d(net, 32, stride=2)
+        net = slim.conv2d(net, 64, stride=2)
 
         net = resblock(net)
-        net = slim.conv2d(net, 32, stride=2)
+        net = slim.conv2d(net, 128, stride=2)
 
         net = slim.conv2d(net, 4, stride=1, activation_fn=None, normalizer_fn=None)
 
