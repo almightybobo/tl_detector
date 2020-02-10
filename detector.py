@@ -124,8 +124,7 @@ class TrafficLightDetector:
 
   def _data_aug(self, input_image):
     net = input_image
-    tensors = tf.unstack(net)
-    net = [distort_image(tensor) for tensor in tensors]
+    net = tf.map_fn(lambda x: distort_image(x), net)
     return net
 
   def _build_model(self):
