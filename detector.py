@@ -21,7 +21,7 @@ class TrafficLightDetector:
     self._lr_decay_rate = kwargs.get('lr_decay_rate', 0.96)
     self._lr_decay_staircase = kwargs.get('lr_decay_staircase', True)
     self._pos_thresh = kwargs.get('pos_thresh', 0.5)
-    self._train_fast_mode = kwargs.get('train_fast_mode', False)
+    self._aug_mode = kwargs.get('aug_mode', 2)
 
     self._session = None
     self._saver = None
@@ -131,8 +131,14 @@ class TrafficLightDetector:
         self._saver = tf.train.Saver(max_to_keep=10)
 
   def _data_aug(self, input_image):
-    net = input_image
-    net = tf.map_fn(lambda x: distort_image(x, fast_mode=self._train_fast_mode), net)
+    if self._aug_mode == 0:
+      net = input_image
+    elif self._aug_mode == 1:
+      net = input_image
+      net = tf.map_fn(lambda x: distort_image(x, fast_mode=False), net)
+    elif self._aug_mode == 2:
+      net = input_image
+      net = tf.map_fn(lambda x: distort_image(x, fast_mode=True), net)
     return net
 
   def _build_model(self):
