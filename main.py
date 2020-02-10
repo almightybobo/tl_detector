@@ -99,7 +99,8 @@ def main(args):
         input_shape=[None, args.input_h, args.input_w, 3],
         checkpoint=args.ckpt,
         is_train=args.train or args.test,
-        pos_thresh=args.pos_thresh)
+        pos_thresh=args.pos_thresh,
+        train_fast_mode=args.train_fast_mode)
 
     tld.create_session()
 
@@ -142,6 +143,7 @@ if __name__ == '__main__':
   parser.add_argument('-l', '--log_dir', default='./logs', type=str)
 
   parser.add_argument('--pos_thresh', default=0.5, type=float)
+  parser.add_argument('--train_fast_mode', action='store_true', default=False)
 
   args = parser.parse_args()
 
