@@ -2,6 +2,9 @@ import tensorflow as tf
 import numpy as np
 
 from tensorflow.contrib import slim
+from tensorflow.python.framework import graph_util
+
+from data_aug import distort_image
 
 class TrafficLightDetector:
   def __init__(self, input_shape, checkpoint, is_train, name="CBNOnet", **kwargs):
@@ -106,11 +109,10 @@ class TrafficLightDetector:
     self._saver.save(self.sess, save_path)
   
   def save_pb(self, pb_path):
-    constant_graph = tf.python.framework.graph_util.convert_variables_to_constants(
-        sess, sess.graph_def, ['light_state', 'light_position'])
+    constant_graph = graph_util.convert_variables_to_constants(
+        self.sess, self.sess.graph_def, ['light_state', 'light_position'])
     with tf.gfile.FastGFile(pb_path, mode='wb') as f:
       f.write(constant_graph.SerializeToString())
-
 
   def _build(self):
     self.node = {}
@@ -120,13 +122,20 @@ class TrafficLightDetector:
         self._build_train()
         self._saver = tf.train.Saver(max_to_keep=10)
 
+  def _data_aug(self, input_image):
+    net = input_image
+    tensors = tf.unstack(net)
+    net = [distort_image(tensor) for tensor in tensors]
+    return net
+
   def _build_model(self):
-    ph_image = tf.placeholder(tf.float32, shape=self.input_shape)
+    ph_image = tf.placeholder(tf.float32, shape=self.input_shape, name='images')
     self.node['ph_image'] = ph_image
 
-    # normalize ?!
     net = ph_image
-    net = (net - 127.5) * (1. / 127.5)
+    net = net * (1. / 255.)
+    if self.is_train:
+      net = self._data_aug(net)
 
     with slim.arg_scope(
         [slim.conv2d],
