@@ -123,7 +123,8 @@ class TrafficLightDetector:
   def _build(self):
     self.node = {}
     with tf.variable_scope(self.name):
-      self._build_model()
+      # self._build_model()
+      self._build_model_real()
       if self.is_train:
         self._build_train()
         self._saver = tf.train.Saver(max_to_keep=10)
@@ -138,6 +139,84 @@ class TrafficLightDetector:
       net = input_image
       net = tf.map_fn(lambda x: distort_image(x, fast_mode=False), net)
     return net
+
+  def _build_model_real(self):
+    ph_image = tf.placeholder(tf.float32, shape=self.input_shape, name='images')
+    self.node['ph_image'] = ph_image
+
+    net = ph_image
+    net = net * (1. / 255.)
+    if self.is_train:
+      net = self._data_aug(net)
+
+    with slim.arg_scope(
+        [slim.conv2d],
+        kernel_size=(3, 3), padding='SAME', normalizer_fn=slim.batch_norm, activation_fn=self.activation_fn):
+
+      with slim.arg_scope(
+          [slim.batch_norm], is_training=True): #self.is_train):
+
+        def resblock(net):
+          in_channel = net.shape[-1]
+          short_cut = net
+          net = slim.conv2d(net, in_channel * 4, kernel_size=(1, 1))
+          net = slim.separable_conv2d(net, in_channel, kernel_size=(3, 3), depth_multiplier=1)
+          net = net + short_cut
+          return net
+
+        net = slim.conv2d(net, 32, stride=2)
+        net_1 = net
+        net = slim.conv2d(net, 32, stride=1)
+        net_2 = net
+
+        net = resblock(net)
+        net = slim.conv2d(net, 32, stride=2)
+        net_3 = net
+
+        net = resblock(net)
+        net = slim.conv2d(net, 64, stride=2)
+        net_4 = net
+
+        net = resblock(net)
+        net = slim.conv2d(net, 64, stride=2)
+        net_5 = net
+
+        net_1 = slim.max_pool2d(net_1, [8, 8], 8)
+        net_2 = slim.max_pool2d(net_2, [8, 8], 8)
+        net_3 = slim.max_pool2d(net_3, [4, 4], 4)
+        net_4 = slim.max_pool2d(net_4, [2, 2], 2)
+        net = tf.concat([net_1, net_2, net_3, net_4, net_5], 3)
+
+        net = slim.conv2d(net, 4, stride=1, activation_fn=None, normalizer_fn=None)
+
+    output = net
+    self.node['output'] = output
+
+    with tf.control_dependencies([tf.assert_equal(tf.shape(output)[0], 1)]):
+      conf = output[0,:,:,0] # (H, W)
+      conf = tf.nn.sigmoid(conf) # (H, W)
+      pos = tf.greater_equal(conf, self.pos_thresh) # (H, W)
+      pos_count = tf.reduce_sum(tf.cast(pos, tf.int8))
+      
+      logit = output[0,:,:,1:4] # (H, W, 3)
+      logit = tf.boolean_mask(logit, pos) # (N, 3)
+      light_states = tf.argmax(logit, -1) # (N)
+      light_states, _, count = tf.unique_with_counts(light_states)
+      max_index = tf.cond(
+          tf.equal(pos_count, 0),
+          lambda: tf.constant(0, dtype=tf.int32),
+          lambda: tf.cast(tf.argmax(count, -1), tf.int32))
+      light_state = tf.cond(
+          tf.equal(pos_count, 0),
+          lambda: tf.constant(-1, dtype=tf.int32),
+          lambda: tf.cast(tf.gather(light_states, max_index), tf.int32))
+      light_state = tf.identity(light_state, name='light_state')
+      light_position = tf.where(pos) * self._total_stride + self._total_stride // 2
+      light_position = tf.identity(light_position, name='light_position')
+
+    self.node['light_state'] = light_state
+    self.node['light_position'] = light_position
+
 
   def _build_model(self):
     ph_image = tf.placeholder(tf.float32, shape=self.input_shape, name='images')
