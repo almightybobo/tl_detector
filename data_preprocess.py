@@ -48,15 +48,31 @@ if __name__ == '__main__':
     if not os.path.exists(resize_dir):
       os.makedirs(resize_dir)
 
-    with open('./udacity-traffic-light-dataset/train.txt', 'w') as f:
-        for color in ['Green', 'Red', 'Yellow']:
-            dir_path = os.path.join(image_dir, color, 'labels')
-            for filepath in glob.glob(dir_path+'/*.xml'):
-                tree = ET.parse(filepath)
-                root = tree.getroot()
-                img_path = os.path.join(image_dir, color, root.findall('filename')[0].text)
-                output = resize_images_and_boxes_in_dataset(img_path, resize_dir, root)
-                f.write(','.join(output) + '\n')
+    if 'simulator' in resize_dir:
+      with open('./udacity-traffic-light-dataset/train.txt', 'w') as f:
+          for color in ['Green', 'Red', 'Yellow']:
+              dir_path = os.path.join(image_dir, color, 'labels')
+              for filepath in glob.glob(dir_path+'/*.xml'):
+                  tree = ET.parse(filepath)
+                  root = tree.getroot()
+                  img_path = os.path.join(image_dir, color, root.findall('filename')[0].text)
+                  output = resize_images_and_boxes_in_dataset(img_path, resize_dir, root)
+                  f.write(','.join(output) + '\n')
+    elif 'testarea' in resize_dir:
+      with open('./udacity-traffic-light-dataset/train_real.txt', 'w') as f:
+        dir_path = os.path.join(image_dir, 'labels')
+        green, red = 0, 0
+        for filepath in glob.glob(dir_path+'/*.xml'):
+            tree = ET.parse(filepath)
+            root = tree.getroot()
+            img_path = os.path.join(image_dir, root.findall('filename')[0].text)
+            output = resize_images_and_boxes_in_dataset(img_path, resize_dir, root)
+            f.write(','.join(output) + '\n')
+            if output[1] == '0':
+              red += 1
+            if output[1] == '2':
+              green += 1
+        print(green, red)
 
   import sys
   image_dir = sys.argv[1] # './udacity-traffic-light-dataset/simulator_dataset_rgb/'
