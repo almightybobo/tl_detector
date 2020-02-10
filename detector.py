@@ -117,8 +117,6 @@ class TrafficLightDetector:
         self.sess,
         self.sess.graph_def,
         [n.name for n in extracted_graph.node])
-    for n in constant_graph.node:
-      print(n.name)
     with tf.gfile.FastGFile(pb_path, mode='wb') as f:
       f.write(constant_graph.SerializeToString())
 
