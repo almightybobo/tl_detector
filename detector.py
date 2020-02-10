@@ -104,6 +104,13 @@ class TrafficLightDetector:
     if self._saver is None:
       self._saver = tf.train.Saver(max_to_keep=100)
     self._saver.save(self.sess, save_path)
+  
+  def save_pb(self, pb_path):
+    constant_graph = tf.python.framework.graph_util.convert_variables_to_constants(
+        sess, sess.graph_def, ['light_state', 'light_position'])
+    with tf.gfile.FastGFile(pb_path, mode='wb') as f:
+      f.write(constant_graph.SerializeToString())
+
 
   def _build(self):
     self.node = {}
