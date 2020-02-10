@@ -21,6 +21,8 @@ def train(tld, data, args):
     print()
     ckpt_path = os.path.join(args.log_dir, 'ckpt-%d-%d' % (e, step))
     tld.save(ckpt_path)
+    pb_path = os.path.join(args.log_dir, 'pb-%d-%d' % (e, step))
+    tld.save_pb(pb_path)
     print('checkpoint %s saved' % ckpt_path)
 
     test(tld, data, args)
@@ -65,13 +67,32 @@ def predict(tld, data, args):
   accuracy = correct / data.test_size
   print('accuracy: [%d/%d] = %.6f' % (correct, data.test_size, accuracy))
 
+def load_pb(pb_path):
+  sess = tf.Session()
+  with tf.gfile.FastGFile(pb_path, 'rb') as f:
+    graph_def = tf.GraphDef()
+    graph_def.ParseFromString(f.read())
+    sess.graph.as_default()
+    tf.import_graph_def(graph_def, name='')
+  class PBRunner:
+    def __init__(self, sess, fetch_names, input_name):
+      self.sess = sess
+      self.fetch_nodes = [self.sess.graph.get_tensor_by_name(name) for name in fetch_names]
+      self.input_node = self.sess.graph.get_tensor_by_name(input_name)
+      
+    def predict(self, images):
+      self.sess.run(self.fetch_nodes, {self.input_node: images}
+
+  return PBRunner(sess, ['light_state', 'light_position'], 'images')
+
 def main(args):
+
   tld = TrafficLightDetector(
       input_shape=[None, args.input_h, args.input_w, 3],
       checkpoint=args.ckpt,
       is_train=args.train or args.test,
       pos_thresh=args.pos_thresh)
-  
+
   data = DataLoader(
       args.data,
       args.batch_size,
@@ -81,7 +102,12 @@ def main(args):
       tld.output_shape[2],
       args.split_test)
 
-  tld.create_session()
+  if args.pb is not None:
+    tld = load_pb(args.pb)
+    predict(tld, data, args)
+    return 
+  else:
+    tld.create_session()
 
   if args.train:
     train(tld, data, args)
@@ -90,7 +116,7 @@ def main(args):
   elif args.predict:
     predict(tld, data, args)
   else:
-    print("specity phase: -r, -t, -p")
+    print("specity phase: -r, -t, -p, or --pb")
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
@@ -102,6 +128,7 @@ if __name__ == '__main__':
 
   parser.add_argument('-d', '--data', default='./udacity-traffic-light-dataset/train.txt', type=str)
   parser.add_argument('-c', '--ckpt', default=None)
+  parser.add_argument('--pb', default=None)
 
   parser.add_argument('-b', '--batch_size', default=1, type=int)
   parser.add_argument('--input_h', default=288, type=int)
