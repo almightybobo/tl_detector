@@ -81,7 +81,7 @@ def load_pb(pb_path):
       self.input_node = self.sess.graph.get_tensor_by_name(input_name)
       
     def predict(self, images):
-      self.sess.run(self.fetch_nodes, {self.input_node: images}
+      self.sess.run(self.fetch_nodes, {self.input_node: images})
 
   return PBRunner(sess, ['light_state', 'light_position'], 'images')
 
