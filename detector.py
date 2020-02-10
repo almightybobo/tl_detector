@@ -135,10 +135,10 @@ class TrafficLightDetector:
       net = input_image
     elif self._aug_mode == 1:
       net = input_image
-      net = tf.map_fn(lambda x: distort_image(x, fast_mode=False), net)
+      net = tf.map_fn(lambda x: distort_image(x, fast_mode=True), net)
     elif self._aug_mode == 2:
       net = input_image
-      net = tf.map_fn(lambda x: distort_image(x, fast_mode=True), net)
+      net = tf.map_fn(lambda x: distort_image(x, fast_mode=False), net)
     return net
 
   def _build_model(self):
