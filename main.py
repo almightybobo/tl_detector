@@ -21,8 +21,6 @@ def train(tld, data, args):
     print()
     ckpt_path = os.path.join(args.log_dir, 'ckpt-%d-%d' % (e, step))
     tld.save(ckpt_path)
-    pb_path = os.path.join(args.log_dir, 'pb-%d-%d' % (e, step))
-    tld.save_pb(pb_path)
     print('checkpoint %s saved' % ckpt_path)
 
     test(tld, data, args)
@@ -41,6 +39,8 @@ def test(tld, data, args):
 
 def predict(tld, data, args):
   print('---- start predicting ----')
+  output_pb_path = '%s.pb' % args.ckpt
+  tld.save_pb(output_pb_path)
   correct = 0
   for i in range(1, data.test_size+1):
     example = data.get_one_test_example()
@@ -68,30 +68,40 @@ def predict(tld, data, args):
   print('accuracy: [%d/%d] = %.6f' % (correct, data.test_size, accuracy))
 
 def load_pb(pb_path):
-  sess = tf.Session()
-  with tf.gfile.FastGFile(pb_path, 'rb') as f:
-    graph_def = tf.GraphDef()
-    graph_def.ParseFromString(f.read())
-    sess.graph.as_default()
-    tf.import_graph_def(graph_def, name='')
   class PBRunner:
-    def __init__(self, sess, fetch_names, input_name):
-      self.sess = sess
+    def __init__(self, pb_path, fetch_names, input_name):
+      self.sess = tf.Session()
+      with tf.gfile.FastGFile(pb_path, 'rb') as f:
+        graph_def = tf.GraphDef()
+        graph_def.ParseFromString(f.read())
+      self.sess.graph.as_default()
+      tf.import_graph_def(graph_def, name='')
+      print('\n'.join([n.name for n in self.sess.graph_def.node]))
       self.fetch_nodes = [self.sess.graph.get_tensor_by_name(name) for name in fetch_names]
+      self.fetch_dict = {node.name.split(':')[0].split('/')[-1]: node for node in self.fetch_nodes}
       self.input_node = self.sess.graph.get_tensor_by_name(input_name)
       
     def predict(self, images):
-      self.sess.run(self.fetch_nodes, {self.input_node: images})
+      return self.sess.run(self.fetch_dict, {self.input_node: images})
 
-  return PBRunner(sess, ['light_state', 'light_position'], 'images')
+    def save_pb(self, *args):
+      pass
+
+  return PBRunner(pb_path, ['CBNOnet/light_state:0', 'CBNOnet/light_position:0'], 'CBNOnet/images:0')
 
 def main(args):
+  if args.pb is not None:
+    tld = load_pb(args.pb)
+    tld.output_shape = [None, args.input_h // 16, args.input_w // 16, 4]
 
-  tld = TrafficLightDetector(
-      input_shape=[None, args.input_h, args.input_w, 3],
-      checkpoint=args.ckpt,
-      is_train=args.train or args.test,
-      pos_thresh=args.pos_thresh)
+  else:
+    tld = TrafficLightDetector(
+        input_shape=[None, args.input_h, args.input_w, 3],
+        checkpoint=args.ckpt,
+        is_train=args.train or args.test,
+        pos_thresh=args.pos_thresh)
+
+    tld.create_session()
 
   data = DataLoader(
       args.data,
@@ -101,13 +111,6 @@ def main(args):
       tld.output_shape[1],
       tld.output_shape[2],
       args.split_test)
-
-  if args.pb is not None:
-    tld = load_pb(args.pb)
-    predict(tld, data, args)
-    return 
-  else:
-    tld.create_session()
 
   if args.train:
     train(tld, data, args)

@@ -109,8 +109,15 @@ class TrafficLightDetector:
     self._saver.save(self.sess, save_path)
   
   def save_pb(self, pb_path):
+    extracted_graph = graph_util.extract_sub_graph(
+        self.sess.graph_def,
+        [self.name + '/light_state', self.name + '/light_position'])
     constant_graph = graph_util.convert_variables_to_constants(
-        self.sess, self.sess.graph_def, ['light_state', 'light_position'])
+        self.sess,
+        self.sess.graph_def,
+        [n.name for n in extracted_graph.node])
+    for n in constant_graph.node:
+      print(n.name)
     with tf.gfile.FastGFile(pb_path, mode='wb') as f:
       f.write(constant_graph.SerializeToString())
 
@@ -155,13 +162,13 @@ class TrafficLightDetector:
         net = slim.conv2d(net, 32, stride=1)
 
         net = resblock(net)
-        net = slim.conv2d(net, 64, stride=2)
+        net = slim.conv2d(net, 32, stride=2)
 
         net = resblock(net)
         net = slim.conv2d(net, 64, stride=2)
 
         net = resblock(net)
-        net = slim.conv2d(net, 128, stride=2)
+        net = slim.conv2d(net, 64, stride=2)
 
         net = slim.conv2d(net, 4, stride=1, activation_fn=None, normalizer_fn=None)
 
@@ -186,7 +193,9 @@ class TrafficLightDetector:
           tf.equal(pos_count, 0),
           lambda: tf.constant(-1, dtype=tf.int32),
           lambda: tf.cast(tf.gather(light_states, max_index), tf.int32))
+      light_state = tf.identity(light_state, name='light_state')
       light_position = tf.where(pos) * self._total_stride + self._total_stride // 2
+      light_position = tf.identity(light_position, name='light_position')
 
     self.node['light_state'] = light_state
     self.node['light_position'] = light_position
@@ -239,6 +248,10 @@ class TrafficLightDetector:
       self.node['train_step'] = train_step
 
   def train(self, images, labels, labels_mask):
+    if np.random.random() > 0.5:
+      images = images[:,:,::-1,:]
+      labels = labels[:,:,::-1,:]
+      labels_mask = labels_mask[:,:,::-1,:]
     ret = self.sess.run(
         {
             'step': self.node['global_step'],
