@@ -10,7 +10,7 @@ import cv2
 from data_loader import DataLoader
 from detector import TrafficLightDetector
 
-def train(tld, data, args):
+def train(tld, data, args, steps_to_predict=100):
   epoch_steps = data.train_size // args.batch_size
   for e in range(1, args.epochs+1):
     loss = []
@@ -20,6 +20,10 @@ def train(tld, data, args):
       ret = tld.train(images, labels, labels_mask)
       loss.append([ret['loss_conf'], ret['loss_logit'], ret['loss_l2'], ret['loss']])
       print(ret, end='\r')
+
+      if step % steps_to_predict == 0:
+        predict(tld, data, args, 10)
+
     print("training: loss_conf, loss_logit, loss_l2, loss")
     print(np.mean(loss, 0))
 
@@ -45,12 +49,13 @@ def test(tld, data, args):
   print(np.mean(loss, 0))
   print()
 
-def predict(tld, data, args):
+def predict(tld, data, args, n_samples=None):
+  n_samples = n_samples if n_samples else (data.test_size + 1)
   print('---- start predicting ----')
   output_pb_path = '%s.pb' % args.ckpt
   tld.save_pb(output_pb_path)
   correct = 0
-  for i in range(1, data.test_size+1):
+  for i in range(1, n_samples):
     example = data.get_one_test_example()
     image = cv2.imread(example.image_path)
 
@@ -161,11 +166,11 @@ if __name__ == '__main__':
   parser.add_argument('-e', '--epochs', default=1, type=int)
   parser.add_argument('-l', '--log_dir', default='./logs', type=str)
 
-  parser.add_argument('--model', default=1, type=int)
+  parser.add_argument('--model', default=0, type=int)
   parser.add_argument('--pos_thresh', default=0.5, type=float)
   parser.add_argument('--aug_mode', default=2, type=int)
   parser.add_argument('--conf_coef', default=5., type=float)
-  parser.add_argument('--l2_coef', default=1e-4, type=float)
+  parser.add_argument('--l2_coef', default=1e-3, type=float)
 
   args = parser.parse_args()
 

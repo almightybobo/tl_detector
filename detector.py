@@ -11,7 +11,7 @@ class TrafficLightDetector:
     self._model = kwargs.get('model', 1)
     self._input_shape = input_shape
     self._total_stride = 16
-    self._n_group = 3 if self._model == 1 else 1
+    self._n_group = 3
     self._ch_per_group = 4
     self._output_channel = self._n_group * self._ch_per_group
     self._output_shape = [input_shape[0], input_shape[1] // self._total_stride, input_shape[2] // self._total_stride, self._output_channel]
