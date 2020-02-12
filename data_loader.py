@@ -89,13 +89,13 @@ class DataLoader:
 
     stat = {
         'length_mean': np.mean(length, 0),
-        'length_q1': np.quantile(length, 0.25, 0),
-        'length_q2': np.quantile(length, 0.5, 0),
-        'length_q3': np.quantile(length, 0.75, 0),
+        'length_q1': np.percentile(length, 25, 0),
+        'length_q2': np.percentile(length, 50, 0),
+        'length_q3': np.percentile(length, 75, 0),
         'area_mean': np.mean(area),
-        'area_q1': np.quantile(area, 0.25),
-        'area_q2': np.quantile(area, 0.5),
-        'area_q3': np.quantile(area, 0.75)}
+        'area_q1': np.percentile(area, 25),
+        'area_q2': np.percentile(area, 50),
+        'area_q3': np.percentile(area, 75)}
 
     print("Box stat:")
     for key, value in stat.items():
