@@ -67,7 +67,14 @@ def predict(tld, data, args, n_samples=None):
     else:
       color = (0, 255, 0)
 
-    if ret['light_state'] == example.lights[0].light_state:
+    has_valid = False
+    for light in example.lights:
+      if 0 <= light.box_center.x < tld.input_shape[2] and 0 <= light.box_center.y < tld.input_shape[1]:
+        has_valid = True
+        break
+
+    if (has_valid and ret['light_state'] == example.lights[0].light_state) or \
+      (not has_valid and ret['light_state'] == -1):
       correct += 1
 
     for y, x in ret['light_position']:
