@@ -112,10 +112,10 @@ class DataLoader:
     example = self.get_one_test_example()
     return self.transform(example)
 
-  def transform(self, example):
+  def transform(self, example, neg_coef=0.1, label_smooth=0.0):
     label = np.zeros(shape=[1, self.output_h, self.output_w, 4], dtype=np.float32)
     label_mask = np.zeros(shape=[1, self.output_h, self.output_w, 4], dtype=np.float32)
-    label_mask[:, :, :, 0] = 0.1
+    label_mask[:, :, :, 0] = neg_coef
 
     for light in example.lights:
       
@@ -125,8 +125,11 @@ class DataLoader:
       y = np.clip(y, 0, label.shape[1] - 1)
 
       label_mask[0, y, x, :] = 1.
+      label[0, :, :, 0] = 0
       label[0, y, x, 0] = 1.
-      label[0, y, x, light.light_state + 1] = 1
+      label[0, y, x, light.light_state + 1] = 1. - label_smooth
+      label[0, y, x, (light.light_state + 1) % 3 + 1] = label_smooth / 2
+      label[0, y, x, (light.light_state + 2) % 3 + 1] = label_smooth / 2
 
       '''
       if x == 0:

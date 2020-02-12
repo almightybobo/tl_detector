@@ -13,12 +13,16 @@ from detector import TrafficLightDetector
 def train(tld, data, args):
   epoch_steps = data.train_size // args.batch_size
   for e in range(1, args.epochs+1):
+    loss = []
     print('---- start training ----')
     for step in range(1, epoch_steps+1):
       images, labels, labels_mask = data.get_train_batch()
       ret = tld.train(images, labels, labels_mask)
+      loss.append([ret['loss_conf'], ret['loss_logit'], ret['loss_l2'], ret['loss']])
       print(ret, end='\r')
-    print()
+    print("training: loss_conf, loss_logit, loss_l2, loss")
+    print(np.mean(loss, 0))
+
     ckpt_path = os.path.join(args.log_dir, 'ckpt-%d-%d' % (e, step))
     tld.save(ckpt_path)
     print('checkpoint %s saved' % ckpt_path)
@@ -31,10 +35,14 @@ def train(tld, data, args):
 def test(tld, data, args):
   test_epoch_steps = data.test_size // args.batch_size
   print('---- start testing ----')
+  loss = []
   for i in range(test_epoch_steps):
     images, labels, labels_mask = data.get_test_batch()
     ret = tld.test(images, labels, labels_mask)
+    loss.append([ret['loss_conf'], ret['loss_logit'], ret['loss']])
     print(ret, end='\r')
+  print("testing: loss_conf, loss_logit, loss")
+  print(np.mean(loss, 0))
   print()
 
 def predict(tld, data, args):
@@ -90,6 +98,9 @@ def load_pb(pb_path):
   return PBRunner(pb_path, ['CBNOnet/light_state:0', 'CBNOnet/light_position:0'], 'CBNOnet/images:0')
 
 def main(args):
+  if not os.path.exists(args.log_dir):
+    os.makedirs(args.log_dir)
+
   if args.pb is not None:
     tld = load_pb(args.pb)
     tld.output_shape = [None, args.input_h // 16, args.input_w // 16, 4]
@@ -100,7 +111,10 @@ def main(args):
         checkpoint=args.ckpt,
         is_train=args.train or args.test,
         pos_thresh=args.pos_thresh,
-        aug_mode=args.aug_mode)
+        aug_mode=args.aug_mode,
+        conf_coef=args.conf_coef,
+        l2_coef=args.l2_coef,
+        model=args.model)
 
     tld.create_session()
 
@@ -137,13 +151,16 @@ if __name__ == '__main__':
   parser.add_argument('-b', '--batch_size', default=1, type=int)
   parser.add_argument('--input_h', default=288, type=int)
   parser.add_argument('--input_w', default=384, type=int)
-  parser.add_argument('-s', '--split_test', default=0.1, type=float)
+  parser.add_argument('-s', '--split_test', default=0.2, type=float)
 
   parser.add_argument('-e', '--epochs', default=1, type=int)
   parser.add_argument('-l', '--log_dir', default='./logs', type=str)
 
+  parser.add_argument('--model', default=1, type=int)
   parser.add_argument('--pos_thresh', default=0.5, type=float)
   parser.add_argument('--aug_mode', default=2, type=int)
+  parser.add_argument('--conf_coef', default=5., type=float)
+  parser.add_argument('--l2_coef', default=1e-4, type=float)
 
   args = parser.parse_args()
 

@@ -10,6 +10,7 @@ from xml.etree import ElementTree as ET
 # 0: red, 1: yellow, 2: green
 # txt for each image: 
 # file_name(=image_name), label, xmin(0~1), xmax(0~1), ymin(0~1), ymax(0~1)
+def resize
 
 def resize_images_and_boxes_in_dataset(img_path, output_dir, root, width=384, height=288):
   output = []
@@ -17,6 +18,7 @@ def resize_images_and_boxes_in_dataset(img_path, output_dir, root, width=384, he
   img_height = int(root.find('size/height').text)
   
   img = cv2.imread(img_path)
+
   img = cv2.resize(img, (width, height))
   
   output_path = os.path.join(output_dir, os.path.basename(img_path))

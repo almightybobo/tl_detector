@@ -22,6 +22,9 @@ class TrafficLightDetector:
     self._lr_decay_staircase = kwargs.get('lr_decay_staircase', True)
     self._pos_thresh = kwargs.get('pos_thresh', 0.5)
     self._aug_mode = kwargs.get('aug_mode', 2)
+    self._conf_coef = kwargs.get('conf_coef', 5.)
+    self._l2_coef = kwargs.get('l2_coef', 1e-3)
+    self._model = kwargs.get('model', 1)
 
     self._session = None
     self._saver = None
@@ -123,8 +126,15 @@ class TrafficLightDetector:
   def _build(self):
     self.node = {}
     with tf.variable_scope(self.name):
-      # self._build_model()
-      self._build_model_real()
+      if self._model == 0:
+        self._build_model_0()
+      elif self._model == 1:
+        self._build_model_1()
+      else:
+        raise ValueError("model index")
+
+      self._build_prediction()
+
       if self.is_train:
         self._build_train()
         self._saver = tf.train.Saver(max_to_keep=10)
@@ -140,7 +150,7 @@ class TrafficLightDetector:
       net = tf.map_fn(lambda x: distort_image(x, fast_mode=False), net)
     return net
 
-  def _build_model_real(self):
+  def _build_model_1(self):
     ph_image = tf.placeholder(tf.float32, shape=self.input_shape, name='images')
     self.node['ph_image'] = ph_image
 
@@ -151,7 +161,7 @@ class TrafficLightDetector:
 
     with slim.arg_scope(
         [slim.conv2d],
-        kernel_size=(3, 3), padding='SAME', normalizer_fn=slim.batch_norm, activation_fn=self.activation_fn):
+        kernel_size=(5, 3), padding='SAME', normalizer_fn=slim.batch_norm, activation_fn=self.activation_fn):
 
       with slim.arg_scope(
           [slim.batch_norm], is_training=True): #self.is_train):
@@ -160,37 +170,39 @@ class TrafficLightDetector:
           in_channel = net.shape[-1]
           short_cut = net
           net = slim.conv2d(net, in_channel * 4, kernel_size=(1, 1))
-          net = slim.separable_conv2d(net, in_channel, kernel_size=(3, 3), depth_multiplier=1)
+          net = slim.separable_conv2d(net, in_channel, kernel_size=(5, 3), depth_multiplier=1)
           net = net + short_cut
           return net
 
         net = slim.conv2d(net, 32, stride=2)
+        net = slim.conv2d(net, 64, stride=1)
         net_1 = net
-        net = slim.conv2d(net, 32, stride=1)
+
+        net = resblock(net)
+        net = slim.conv2d(net, 64, stride=2)
         net_2 = net
 
         net = resblock(net)
-        net = slim.conv2d(net, 32, stride=2)
+        net = slim.conv2d(net, 64, stride=2)
+
+        net = resblock(net)
+        net = slim.conv2d(net, 64, stride=2)
         net_3 = net
 
-        net = resblock(net)
-        net = slim.conv2d(net, 64, stride=2)
-        net_4 = net
-
-        net = resblock(net)
-        net = slim.conv2d(net, 64, stride=2)
-        net_5 = net
-
         net_1 = slim.max_pool2d(net_1, [8, 8], 8)
-        net_2 = slim.max_pool2d(net_2, [8, 8], 8)
-        net_3 = slim.max_pool2d(net_3, [4, 4], 4)
-        net_4 = slim.max_pool2d(net_4, [2, 2], 2)
-        net = tf.concat([net_1, net_2, net_3, net_4, net_5], 3)
+        net_2 = slim.max_pool2d(net_2, [4, 4], 4)
+        net = tf.concat([net_1, net_2, net_3], 3)
+
+        net = slim.conv2d(net, 256, kernel_size=(1, 1), stride=1)
+        if self.is_train:
+          net = slim.dropout(net, keep_prob=0.7, is_training=True)
 
         net = slim.conv2d(net, 4, stride=1, activation_fn=None, normalizer_fn=None)
 
-    output = net
-    self.node['output'] = output
+    self.node['output'] = net
+
+  def _build_prediction(self):
+    output = self.node['output']
 
     with tf.control_dependencies([tf.assert_equal(tf.shape(output)[0], 1)]):
       conf = output[0,:,:,0] # (H, W)
@@ -217,8 +229,7 @@ class TrafficLightDetector:
     self.node['light_state'] = light_state
     self.node['light_position'] = light_position
 
-
-  def _build_model(self):
+  def _build_model_0(self):
     ph_image = tf.placeholder(tf.float32, shape=self.input_shape, name='images')
     self.node['ph_image'] = ph_image
 
@@ -256,33 +267,7 @@ class TrafficLightDetector:
 
         net = slim.conv2d(net, 4, stride=1, activation_fn=None, normalizer_fn=None)
 
-    output = net
-    self.node['output'] = output
-
-    with tf.control_dependencies([tf.assert_equal(tf.shape(output)[0], 1)]):
-      conf = output[0,:,:,0] # (H, W)
-      conf = tf.nn.sigmoid(conf) # (H, W)
-      pos = tf.greater_equal(conf, self.pos_thresh) # (H, W)
-      pos_count = tf.reduce_sum(tf.cast(pos, tf.int8))
-      
-      logit = output[0,:,:,1:4] # (H, W, 3)
-      logit = tf.boolean_mask(logit, pos) # (N, 3)
-      light_states = tf.argmax(logit, -1) # (N)
-      light_states, _, count = tf.unique_with_counts(light_states)
-      max_index = tf.cond(
-          tf.equal(pos_count, 0),
-          lambda: tf.constant(0, dtype=tf.int32),
-          lambda: tf.cast(tf.argmax(count, -1), tf.int32))
-      light_state = tf.cond(
-          tf.equal(pos_count, 0),
-          lambda: tf.constant(-1, dtype=tf.int32),
-          lambda: tf.cast(tf.gather(light_states, max_index), tf.int32))
-      light_state = tf.identity(light_state, name='light_state')
-      light_position = tf.where(pos) * self._total_stride + self._total_stride // 2
-      light_position = tf.identity(light_position, name='light_position')
-
-    self.node['light_state'] = light_state
-    self.node['light_position'] = light_position
+    self.node['output'] = net
 
   def _build_train(self):
     output = self.node['output']
@@ -313,7 +298,11 @@ class TrafficLightDetector:
     loss_logit = tf.reduce_sum(loss_logit) / batch_size
     self.node['loss_logit'] = loss_logit
 
-    loss = 5. * loss_conf + loss_logit
+    t_vars = [v for v in tf.trainable_variables() if 'bias' not in v.name and 'beta' not in v.name]
+    loss_l2 = tf.reduce_sum([0.5 * tf.reduce_sum(v * v) for v in t_vars])
+    self.node['loss_l2'] = loss_l2
+
+    loss = self._conf_coef * loss_conf + loss_logit + self._l2_coef * loss_l2
     self.node['loss'] = loss
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -342,6 +331,7 @@ class TrafficLightDetector:
             'lr': self.node['learning_rate'],
             'loss_conf': self.node['loss_conf'],
             'loss_logit': self.node['loss_logit'],
+            'loss_l2': self.node['loss_l2'],
             'loss': self.node['loss'],
             'train_step': self.node['train_step']},
         {
