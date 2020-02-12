@@ -64,8 +64,8 @@ class TrafficLightDetector:
     total_size = 0
     for v in tf.trainable_variables():
       size = np.prod(v.shape)
-      s += "size: %d == %s\n" % (size, v)
-      total_size += size
+      s += "size: %d == %s\n" % (int(size), v)
+      total_size += int(size)
     s += "total_size: %d" % total_size
     return s
 
