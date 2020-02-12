@@ -8,9 +8,13 @@ from data_aug import distort_image
 
 class TrafficLightDetector:
   def __init__(self, input_shape, checkpoint, is_train, name="CBNOnet", **kwargs):
+    self._model = kwargs.get('model', 1)
     self._input_shape = input_shape
     self._total_stride = 16
-    self._output_shape = [input_shape[0], input_shape[1] // self._total_stride, input_shape[2] // self._total_stride, 4]
+    self._n_group = 3 if self._model == 1 else 1
+    self._ch_per_group = 4
+    self._output_channel = self._n_group * self._ch_per_group
+    self._output_shape = [input_shape[0], input_shape[1] // self._total_stride, input_shape[2] // self._total_stride, self._output_channel]
     self._checkpoint = checkpoint
     self._is_train = is_train
     self._name = name
@@ -24,7 +28,6 @@ class TrafficLightDetector:
     self._aug_mode = kwargs.get('aug_mode', 2)
     self._conf_coef = kwargs.get('conf_coef', 5.)
     self._l2_coef = kwargs.get('l2_coef', 1e-3)
-    self._model = kwargs.get('model', 1)
 
     self._session = None
     self._saver = None
@@ -88,6 +91,10 @@ class TrafficLightDetector:
   @property
   def pos_thresh(self):
     return self._pos_thresh
+
+  @property
+  def n_group(self):
+    return self._n_group
 
   @property
   def sess(self):
@@ -218,7 +225,7 @@ class TrafficLightDetector:
         if self.is_train:
           net = slim.dropout(net, keep_prob=0.7)
 
-        net = slim.conv2d(net, 4, stride=1, activation_fn=None, normalizer_fn=None)
+        net = slim.conv2d(net, self._output_channel, stride=1, activation_fn=None, normalizer_fn=None)
 
     self.node['output'] = net
 
@@ -226,25 +233,36 @@ class TrafficLightDetector:
     output = self.node['output']
 
     with tf.control_dependencies([tf.assert_equal(tf.shape(output)[0], 1)]):
-      conf = output[0,:,:,0] # (H, W)
-      conf = tf.nn.sigmoid(conf) # (H, W)
-      pos = tf.greater_equal(conf, self.pos_thresh) # (H, W)
-      pos_count = tf.reduce_sum(tf.cast(pos, tf.int8))
       
-      logit = output[0,:,:,1:4] # (H, W, 3)
-      logit = tf.boolean_mask(logit, pos) # (N, 3)
-      light_states = tf.argmax(logit, -1) # (N)
+      logits = []
+      positions = []
+      for g in range(self._n_group):
+        ch = g * self._ch_per_group
+        conf = output[0,:,:,ch] # (H, W)
+        conf = tf.nn.sigmoid(conf) # (H, W)
+        pos = tf.greater_equal(conf, self.pos_thresh) # (H, W)
+        positions.append(tf.expand_dims(pos, -1)) # (H, W, 1)
+
+        logit = output[0,:,:,(ch+1):(ch+4)] # (H, W, 3)
+        logit = tf.boolean_mask(logit, pos) # (N, 3)
+        logits.append(logit)
+
+      logit = tf.concat(logits, 0) # (N', 3)
+      position = tf.concat(positions, -1) # (H, W, n_group)
+      position_count = tf.reduce_sum(tf.cast(position, tf.int32))
+
+      light_states = tf.argmax(logit, -1) # (N')
       light_states, _, count = tf.unique_with_counts(light_states)
       max_index = tf.cond(
-          tf.equal(pos_count, 0),
+          tf.equal(position_count, 0),
           lambda: tf.constant(0, dtype=tf.int32),
           lambda: tf.cast(tf.argmax(count, -1), tf.int32))
       light_state = tf.cond(
-          tf.equal(pos_count, 0),
+          tf.equal(position_count, 0),
           lambda: tf.constant(-1, dtype=tf.int32),
           lambda: tf.cast(tf.gather(light_states, max_index), tf.int32))
       light_state = tf.identity(light_state, name='light_state')
-      light_position = tf.where(pos) * self._total_stride + self._total_stride // 2
+      light_position = tf.where(position)[:,0:2] * self._total_stride + self._total_stride // 2
       light_position = tf.identity(light_position, name='light_position')
 
     self.node['light_state'] = light_state
@@ -286,7 +304,7 @@ class TrafficLightDetector:
         net = resblock(net)
         net = slim.conv2d(net, 64, stride=2)
 
-        net = slim.conv2d(net, 4, stride=1, activation_fn=None, normalizer_fn=None)
+        net = slim.conv2d(net, self._output_channel, stride=1, activation_fn=None, normalizer_fn=None)
 
     self.node['output'] = net
 
@@ -300,9 +318,9 @@ class TrafficLightDetector:
     self.node['ph_label'] = ph_label
     self.node['ph_mask'] = ph_mask
 
-    gt_conf = ph_label[:,:,:,0]
-    pr_conf = output[:,:,:,0]
-    mask_conf = ph_mask[:,:,:,0]
+    gt_conf = ph_label[:,:,:,::self._ch_per_group]
+    pr_conf = output[:,:,:,::self._ch_per_group]
+    mask_conf = ph_mask[:,:,:,::self._ch_per_group]
     # loss_conf = tf.squared_difference(gt_conf, pr_conf)
     pr_conf = tf.nn.sigmoid(pr_conf)
     pr_conf = tf.clip_by_value(pr_conf, 1e-6, 1-1e-6)
@@ -311,12 +329,18 @@ class TrafficLightDetector:
     loss_conf = tf.reduce_sum(loss_conf) / batch_size
     self.node['loss_conf'] = loss_conf
 
-    gt_logit = ph_label[:,:,:,1:4]
-    pr_logit = tf.nn.softmax(output[:,:,:,1:4])
-    pr_logit = tf.clip_by_value(pr_logit, 1e-6, 1-1e-6)
-    mask_logit = ph_mask[:,:,:,1:4]
-    loss_logit = - tf.reduce_sum(gt_logit * tf.log(pr_logit) * mask_logit, -1)
-    loss_logit = tf.reduce_sum(loss_logit) / batch_size
+    loss_logits = []
+    for g in range(self._n_group):
+      ch = g * self._ch_per_group
+      gt_logit = ph_label[:,:,:,(ch+1):(ch+4)]
+      pr_logit = tf.nn.softmax(output[:,:,:,(ch+1):(ch+4)])
+      pr_logit = tf.clip_by_value(pr_logit, 1e-6, 1.-1e-6)
+      mask_logit = ph_mask[:,:,:,(ch+1):(ch+4)]
+      loss_logit = - tf.reduce_sum(gt_logit * tf.log(pr_logit) * mask_logit, -1)
+      loss_logit = tf.reduce_sum(loss_logit) / batch_size
+      loss_logits.append(loss_logit)
+
+    loss_logit = tf.add_n(loss_logits)
     self.node['loss_logit'] = loss_logit
 
     t_vars = [v for v in tf.trainable_variables() if 'bias' not in v.name and 'beta' not in v.name]

@@ -22,7 +22,7 @@ class Example:
     self.lights = lights
 
 class DataLoader:
-  def __init__(self, train_txt_path, batch_size, input_h, input_w, output_h, output_w, test_ratio=0.1):
+  def __init__(self, train_txt_path, batch_size, input_h, input_w, output_h, output_w, n_group, test_ratio=0.1):
     examples = self._read_examples(train_txt_path)
 
     np.random.seed(84)
@@ -49,7 +49,9 @@ class DataLoader:
         [0.0, 1.0, 0.0],
         [0.0, 0.0, 0.0]], dtype=np.float32)
 
-    self.output_channel = 6
+    self.n_group = 3
+    self.ch_per_group = 4
+    self.output_channel = self.ch_per_group * self.n_group
     self.images = np.zeros(shape=[batch_size, input_h, input_w, 3], dtype=np.float32)
     self.labels = np.zeros(shape=[batch_size, output_h, output_w, self.output_channel], dtype=np.float32)
     self.labels_mask = np.zeros(shape=[batch_size, output_h, output_w, self.output_channel], dtype=np.float32)
@@ -144,36 +146,59 @@ class DataLoader:
   def transform(self, example, neg_coef=0.15, label_smooth=0.0):
     label = np.zeros(shape=[1, self.output_h, self.output_w, self.output_channel], dtype=np.float32)
     label_mask = np.zeros(shape=[1, self.output_h, self.output_w, self.output_channel], dtype=np.float32)
-    label_mask[:, :, :, :(self.output_channel-3)] = neg_coef
-
+    label_mask[:, :, :, ::self.ch_per_group] = neg_coef
 
     for light in example.lights:
       
       x = int(round(light.box_center.x / self.stride))
-      x = np.clip(x, 0, label.shape[2] - 1)
+      if x < 0 or x > label.shape[2] - 1:
+        continue
       y = int(round(light.box_center.y / self.stride))
-      y = np.clip(y, 0, label.shape[1] - 1)
-      label_mask[0, y, x, :] = 1.
-      label[0, y, x, light.light_state + 1] = 1. - label_smooth
-      label[0, y, x, (light.light_state + 1) % 3 + 1] = label_smooth / 2
-      label[0, y, x, (light.light_state + 2) % 3 + 1] = label_smooth / 2
+      if y < 0 or y > label.shape[1] - 1:
+        continue
 
-      label[0, :, :, :(self.output_channel - 3)] = 0
       area = light.box_length.x * light.box_length.y
       if area < self.stat['area_q1']:
-        label[0, y, x, 0] = 1.
+        groups = [0]
       elif area < self.stat['area_q2']:
-        label[0, y, x, 0:2] = 1.
+        groups = [0, 1]
       elif area < self.stat['area_q3']:
-        label[0, y, x, 1:3] = 1.
+        groups = [1, 2]
       else:
-        label[0, y, x, 2] = 1.
-      
+        groups = [2]
+
+      for g in groups:
+        ch = g * self.ch_per_group
+        label_mask[0, y, x, ch:(ch+self.ch_per_group)] = 1.
+        label[0, y, x, ch] = 1.
+        label[0, y, x, ch + light.light_state + 1] = 1.
+
     image = np.expand_dims(cv2.imread(example.image_path), 0)
     return image, label, label_mask
 
 if __name__ == '__main__':
   train_txt_path = './udacity-traffic-light-dataset/train.txt'
-  loader = DataLoader(train_txt_path, 2, 288, 384, 18, 24)
-  loader.get_train_batch()
+  loader = DataLoader(train_txt_path, 1, 288, 384, 18, 24, 3)
+  image, label, label_mask = loader.get_train_batch()
+  for c in range(3*4):
+    print(c)
+    for y in range(18):
+      if np.any(label[0, y, :, c]):
+        print(label[0, y, :, c], ' v')
+      else:
+        print(label[0, y, :, c])
+
+      if c % 4 == 0:
+        if np.any(label_mask[0, y, :, c] != 0.15):
+          print(' ', label_mask[0, y, :, c], ' v')
+        else:
+          print(' ', label_mask[0, y, :, c])
+      else:
+        if np.any(label_mask[0, y, :, c]):
+          print(' ', label_mask[0, y, :, c], ' v')
+        else:
+          print(' ', label_mask[0, y, :, c])
+
+    print()
+
   loader.get_test_batch()

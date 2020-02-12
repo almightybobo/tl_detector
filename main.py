@@ -101,9 +101,13 @@ def main(args):
   if not os.path.exists(args.log_dir):
     os.makedirs(args.log_dir)
 
+  n_group = 3 if args.model == 1 else 1
+  n_output_channel = n_group * 4
+
   if args.pb is not None:
     tld = load_pb(args.pb)
-    tld.output_shape = [None, args.input_h // 16, args.input_w // 16, 4]
+    tld.output_shape = [None, args.input_h // 16, args.input_w // 16, n_output_channel]
+    tld.n_group = n_group
 
   else:
     tld = TrafficLightDetector(
@@ -125,6 +129,7 @@ def main(args):
       args.input_w,
       tld.output_shape[1],
       tld.output_shape[2],
+      tld.n_group,
       args.split_test)
 
   if args.train:
@@ -144,7 +149,7 @@ if __name__ == '__main__':
   phase.add_argument('-t', '--test', action='store_true', default=False)
   phase.add_argument('-p', '--predict', action='store_true', default=False)
 
-  parser.add_argument('-d', '--data', default='./udacity-traffic-light-dataset/train.txt', type=str)
+  parser.add_argument('-d', '--data', default='./udacity-traffic-light-dataset/sim_data.txt', type=str)
   parser.add_argument('-c', '--ckpt', default=None)
   parser.add_argument('--pb', default=None)
 
