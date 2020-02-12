@@ -79,7 +79,7 @@ class DataLoader:
         examples.append(Example(image_path, lights))
     return examples
   
-  def get_stat(self, examples: [Example]):
+  def get_stat(self, examples):
     length = []
     area = []
     for example in examples:
