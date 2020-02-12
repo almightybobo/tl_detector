@@ -29,6 +29,7 @@ class TrafficLightDetector:
     self._session = None
     self._saver = None
     self._build()
+    print(self.parameters_info)
 
   def __del__(self):
     self.close_session()
@@ -174,28 +175,48 @@ class TrafficLightDetector:
           net = net + short_cut
           return net
 
-        net = slim.conv2d(net, 32, stride=2)
         net = slim.conv2d(net, 64, stride=1)
+        net = slim.max_pool2d(net, [2, 2], 2)
+        net = slim.conv2d(net, 64, stride=1)
+
+        net = resblock(net)
+        net = resblock(net)
         net_1 = net
+        if self.is_train:
+          net = slim.dropout(net, keep_prob=0.9)
+
+        net = slim.conv2d(net, 128, stride=1)
+        net = slim.max_pool2d(net, [2, 2], 2)
 
         net = resblock(net)
-        net = slim.conv2d(net, 64, stride=2)
+        net = resblock(net)
         net_2 = net
+        if self.is_train:
+          net = slim.dropout(net, keep_prob=0.9)
+
+        net = slim.conv2d(net, 128, stride=1)
+        net = slim.max_pool2d(net, [2, 2], 2)
 
         net = resblock(net)
-        net = slim.conv2d(net, 64, stride=2)
-
         net = resblock(net)
-        net = slim.conv2d(net, 64, stride=2)
         net_3 = net
+        if self.is_train:
+          net = slim.dropout(net, keep_prob=0.8)
+
+        net = slim.conv2d(net, 256, stride=1)
+        net = slim.max_pool2d(net, [2, 2], 2)
+        net_4 = net
+        if self.is_train:
+          net = slim.dropout(net, keep_prob=0.8)
 
         net_1 = slim.max_pool2d(net_1, [8, 8], 8)
         net_2 = slim.max_pool2d(net_2, [4, 4], 4)
-        net = tf.concat([net_1, net_2, net_3], 3)
+        net_3 = slim.max_pool2d(net_3, [2, 2], 2)
+        net = tf.concat([net_1, net_2, net_3, net_4], 3)
 
-        net = slim.conv2d(net, 256, kernel_size=(1, 1), stride=1)
+        net = slim.conv2d(net, 320, kernel_size=(1, 1), stride=1)
         if self.is_train:
-          net = slim.dropout(net, keep_prob=0.7, is_training=True)
+          net = slim.dropout(net, keep_prob=0.7)
 
         net = slim.conv2d(net, 4, stride=1, activation_fn=None, normalizer_fn=None)
 
