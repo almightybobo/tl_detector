@@ -169,7 +169,7 @@ class TrafficLightDetector:
 
     with slim.arg_scope(
         [slim.conv2d],
-        kernel_size=(3, 3), padding='SAME', normalizer_fn=slim.batch_norm, activation_fn=self.activation_fn):
+        kernel_size=(5, 3), padding='SAME', normalizer_fn=slim.batch_norm, activation_fn=self.activation_fn):
 
       with slim.arg_scope(
           [slim.batch_norm], is_training=self.is_train):
@@ -177,32 +177,41 @@ class TrafficLightDetector:
         def resblock(net):
           in_channel = net.shape[-1]
           short_cut = net
-          net = slim.conv2d(net, in_channel * 4, kernel_size=(1, 1))
+          net = slim.conv2d(net, in_channel * 2, kernel_size=(1, 1))
           net = slim.separable_conv2d(net, in_channel, kernel_size=(5, 3), depth_multiplier=1)
           net = net + short_cut
           return net
 
         net = slim.conv2d(net, 32, stride=1)
         net = slim.max_pool2d(net, [2, 2], 2)
-        net = slim.conv2d(net, 32, stride=1)
-
-        net = resblock(net)
         net = slim.conv2d(net, 64, stride=1)
-        net = slim.max_pool2d(net, [2, 2], 2)
         net_1 = net
 
         net = resblock(net)
-        net = slim.conv2d(net, 64, stride=1)
-        net = slim.max_pool2d(net, [2, 2], 2)
-
         net = resblock(net)
-        net = slim.conv2d(net, 128, stride=1)
+        net = slim.conv2d(net, 64, stride=1)
         net = slim.max_pool2d(net, [2, 2], 2)
         net_2 = net
 
-        net_1 = slim.max_pool2d(net_1, [4, 4], 4)
-        net = tf.concat([net_1, net_2], -1)
+        net = resblock(net)
+        net = resblock(net)
+        net = slim.conv2d(net, 64, stride=1)
+        net = slim.max_pool2d(net, [2, 2], 2)
+        net_3 = net
 
+        net = resblock(net)
+        net = resblock(net)
+        net = slim.conv2d(net, 128, stride=1)
+        net = slim.max_pool2d(net, [2, 2], 2)
+        net_4 = net
+
+        net_1 = slim.max_pool2d(net_1, [8, 8], 8)
+        net_1 = slim.conv2d(net_1, 32, kernel_size=(1, 1))
+        net_2 = slim.max_pool2d(net_2, [4, 4], 4)
+        net_2 = slim.conv2d(net_2, 32, kernel_size=(1, 1))
+        net_3 = slim.max_pool2d(net_3, [2, 2], 2)
+        net_3 = slim.conv2d(net_3, 32, kernel_size=(1, 1))
+        net = tf.concat([net_1, net_2, net_3, net_4], -1)
 
         net = slim.conv2d(net, 128, kernel_size=(1, 1))
         if self.is_train:
