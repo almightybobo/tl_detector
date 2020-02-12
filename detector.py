@@ -189,6 +189,7 @@ class TrafficLightDetector:
         net = resblock(net)
         net = slim.conv2d(net, 64, stride=1)
         net = slim.max_pool2d(net, [2, 2], 2)
+        net_1 = net
 
         net = resblock(net)
         net = slim.conv2d(net, 64, stride=1)
@@ -197,6 +198,12 @@ class TrafficLightDetector:
         net = resblock(net)
         net = slim.conv2d(net, 128, stride=1)
         net = slim.max_pool2d(net, [2, 2], 2)
+        net_2 = net
+
+        net_1 = slim.max_pool2d(net_1, [4, 4], 4)
+        net = tf.concat([net_1, net_2], -1)
+
+
         net = slim.conv2d(net, 128, kernel_size=(1, 1))
         if self.is_train:
           net = slim.dropout(net, keep_prob=0.7)
