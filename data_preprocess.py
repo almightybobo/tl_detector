@@ -60,13 +60,13 @@ def resize_crop_with_box(image, boxes, imm_h, imm_w, target_h, target_w):
   result_image = imm_image[crop_h_start:crop_h_end, crop_w_start:crop_w_end, :]
   return result_image, boxes
 
-def resize_images_and_boxes_in_dataset(img_path, output_dir, root, target_w=384, target_h=288):
+def resize_images_and_boxes_in_dataset(img_path, output_dir, root, target_w=384, target_h=288, n_aug=50):
 
   image = cv2.imread(img_path)
   image_h, image_w = image.shape[:2]
 
   outputs = []
-  for aug_times in range(20):
+  for aug_times in range(n_aug):
     output = []
     boxes = []
     colors = []
@@ -85,6 +85,7 @@ def resize_images_and_boxes_in_dataset(img_path, output_dir, root, target_w=384,
 
     basename = os.path.basename(img_path)
     output_path = os.path.join(output_dir, basename[:-4] + '_%d' % aug_times + basename[-4:])
+
     cv2.imwrite(output_path, img)
     
     output.append(output_path)
@@ -147,9 +148,7 @@ if __name__ == '__main__':
                   outputs = resize_images_and_boxes_in_dataset(img_path, resize_dir, root)
                   for output in outputs:
                     f.write(','.join(output) + '\n')
-
-                  break
-              break
+                  print("proc: %s" % filepath, end='\r')
 
     elif 'testarea' in image_dir:
       with open(output_path, 'w') as f:
@@ -168,13 +167,14 @@ if __name__ == '__main__':
         print(green, red)
   
   def test(data_path, test_dir):
+    print("test")
     with open(data_path, 'r') as f:
       for line in f:
         line = line.strip().split(',')
         image_path = line[0]
         line = line[1:]
         image = cv2.imread(image_path)
-        for i in range(len(line) // 5, 5):
+        for i in range(0, len(line), 5):
           color, x1, y1, x2, y2 = list(map(lambda x: int(round(float(x))), line[i:i+5]))
           if color == 0:
             color = (0, 0, 255)
