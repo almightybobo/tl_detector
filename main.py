@@ -73,7 +73,7 @@ def predict(tld, data, args, n_samples=None):
     for y, x in ret['light_position']:
       cv2.circle(image, (x, y), 3, color, -1)
 
-    output_path = os.path.join(args.log_dir, os.path.basename(example.image_path))
+    output_path = os.path.join(args.log_dir, '%d.jpg' % i)
     cv2.imwrite(output_path, image)
     print("[%d/%d] %s" % (i, n_samples, output_path), end='\r')
 
