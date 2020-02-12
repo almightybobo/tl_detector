@@ -123,6 +123,7 @@ def main(args):
         aug_mode=args.aug_mode,
         conf_coef=args.conf_coef,
         l2_coef=args.l2_coef,
+        lr_decay_steps=args.lr_decay_steps,
         model=args.model)
 
     tld.create_session()
@@ -171,6 +172,7 @@ if __name__ == '__main__':
   parser.add_argument('--aug_mode', default=2, type=int)
   parser.add_argument('--conf_coef', default=5., type=float)
   parser.add_argument('--l2_coef', default=1e-3, type=float)
+  parser.add_argument('--lr_decay_steps', default=1000, type=int)
 
   args = parser.parse_args()
 
