@@ -112,7 +112,7 @@ class DataLoader:
     example = self.get_one_test_example()
     return self.transform(example)
 
-  def transform(self, example, neg_coef=0.1, label_smooth=0.0):
+  def transform(self, example, neg_coef=0.15, label_smooth=0.0):
     label = np.zeros(shape=[1, self.output_h, self.output_w, 4], dtype=np.float32)
     label_mask = np.zeros(shape=[1, self.output_h, self.output_w, 4], dtype=np.float32)
     label_mask[:, :, :, 0] = neg_coef
