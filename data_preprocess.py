@@ -79,8 +79,8 @@ def resize_images_and_boxes_in_dataset(img_path, output_dir, root, target_w=384,
       color = COLOR_LABEL[p.find('name').text]
       colors.append(color)
 
-    imm_h = target_h + aug_times * 3
-    imm_w = int(imm_h * (image_w / image_h))
+    imm_w = target_w + aug_times * 4
+    imm_h = int(imm_w * (image_h / image_w))
     img, boxes = resize_crop_with_box(image, boxes, imm_h, imm_w, target_h, target_w)
 
     basename = os.path.basename(img_path)
