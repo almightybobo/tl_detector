@@ -104,31 +104,33 @@ if __name__ == '__main__':
 
     if 'simulator' in image_dir:
       with open(output_path, 'w') as f:
-          for color in ['Green', 'Red', 'Yellow']:
-              dir_path = os.path.join(image_dir, color, 'labels')
-              for filepath in glob.glob(dir_path+'/*.xml'):
-                  tree = ET.parse(filepath)
-                  root = tree.getroot()
-                  img_path = os.path.join(image_dir, color, root.findall('filename')[0].text)
-                  outputs = resize_images_and_boxes_in_dataset(img_path, resize_dir, root)
-                  for output in outputs:
-                    f.write(','.join(output) + '\n')
-                  print("proc: %s" % filepath, end='\r')
+        for color in ['Green', 'Red', 'Yellow']:
+          dir_path = os.path.join(image_dir, color, 'labels')
+          for filepath in glob.glob(dir_path+'/*.xml'):
+            tree = ET.parse(filepath)
+            root = tree.getroot()
+            img_path = os.path.join(image_dir, color, root.findall('filename')[0].text)
+            outputs = resize_images_and_boxes_in_dataset(img_path, resize_dir, root)
+            for output in outputs:
+              f.write(','.join(output) + '\n')
+            print("proc: %s" % filepath, end='\r')
 
     elif 'testarea' in image_dir:
       with open(output_path, 'w') as f:
         dir_path = os.path.join(image_dir, 'labels')
         green, red = 0, 0
         for filepath in glob.glob(dir_path+'/*.xml'):
-            tree = ET.parse(filepath)
-            root = tree.getroot()
-            img_path = os.path.join(image_dir, root.findall('filename')[0].text)
-            output = resize_images_and_boxes_in_dataset(img_path, resize_dir, root)
+          tree = ET.parse(filepath)
+          root = tree.getroot()
+          img_path = os.path.join(image_dir, root.findall('filename')[0].text)
+          outputs = resize_images_and_boxes_in_dataset(img_path, resize_dir, root)
+          for output in outputs:
             f.write(','.join(output) + '\n')
-            if output[1] == '0':
-              red += 1
-            if output[1] == '2':
-              green += 1
+          if output[1] == '0':
+            red += 1
+          if output[1] == '2':
+            green += 1
+          print("proc: %s" % filepath, end='\r')
         print(green, red)
   
   def test(data_path, test_dir):
