@@ -50,12 +50,12 @@ def test(tld, data, args):
   print()
 
 def predict(tld, data, args, n_samples=None):
-  n_samples = n_samples if n_samples else (data.test_size + 1)
+  n_samples = n_samples if n_samples else data.test_size
   print('---- start predicting ----')
   output_pb_path = '%s.pb' % args.ckpt
   tld.save_pb(output_pb_path)
   correct = 0
-  for i in range(1, n_samples):
+  for i in range(1, n_samples+1):
     example = data.get_one_test_example()
     image = cv2.imread(example.image_path)
 
@@ -118,6 +118,7 @@ def main(args):
 
   if args.pb is not None:
     tld = load_pb(args.pb)
+    tld.input_shape = [None, args.input_h, args.input_w, 3]
     tld.output_shape = [None, args.input_h // 16, args.input_w // 16, n_output_channel]
     tld.n_group = n_group
 
